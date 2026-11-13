@@ -3,6 +3,15 @@ let products = [];
 let cart = JSON.parse(localStorage.getItem('bb_cart') || '[]');
 let currentUser = JSON.parse(localStorage.getItem('bb_user') || 'null');
 
+// ===== Currency =====
+// All product and order prices are stored as numeric AUD amounts.
+function formatCurrency(amount) {
+  return new Intl.NumberFormat('en-AU', {
+    style: 'currency',
+    currency: 'AUD'
+  }).format(Number(amount) || 0);
+}
+
 // ===== DOM Elements =====
 const productsGrid = document.getElementById('productsGrid');
 const cartBtn = document.getElementById('cartBtn');
@@ -183,7 +192,7 @@ function renderProducts(filter = 'all') {
         <h3 class="product-name">${p.name}</h3>
         <p class="product-desc">${p.description || ''}</p>
         <div class="product-footer">
-          <span class="product-price">Rs. ${p.price.toLocaleString()}</span>
+          <span class="product-price">${formatCurrency(p.price)}</span>
           <button class="add-btn" data-id="${p.id}" title="Add to cart">+</button>
         </div>
       </div>
@@ -261,7 +270,7 @@ function updateCartUI() {
       <div class="cart-item">
         <div class="cart-item-info">
           <div class="cart-item-name">${item.product_name}</div>
-          <div class="cart-item-price">Rs. ${item.price.toLocaleString()} each</div>
+          <div class="cart-item-price">${formatCurrency(item.price)} each</div>
           <div class="cart-item-qty">
             <button class="qty-btn" data-id="${item.product_id}" data-delta="-1">−</button>
             <span>${item.quantity}</span>
@@ -269,7 +278,7 @@ function updateCartUI() {
           </div>
         </div>
         <div style="font-weight:600;color:var(--brown)">
-          Rs. ${(item.price * item.quantity).toLocaleString()}
+          ${formatCurrency(item.price * item.quantity)}
         </div>
       </div>
     `).join('');
@@ -283,7 +292,7 @@ function updateCartUI() {
     checkoutBtn.disabled = false;
   }
 
-  cartTotal.textContent = `Rs. ${getCartTotal().toLocaleString()}`;
+  cartTotal.textContent = formatCurrency(getCartTotal());
 }
 
 // ===== Cart Sidebar =====
@@ -313,7 +322,7 @@ function openCheckout() {
     <strong>Order Summary</strong><br>
     ${cart.map(i => `${i.product_name} × ${i.quantity}`).join('<br>')}
     <br><br>
-    <strong>Total: Rs. ${getCartTotal().toLocaleString()}</strong>
+    <strong>Total: ${formatCurrency(getCartTotal())}</strong>
   `;
 
   closeCartSidebar();
@@ -338,6 +347,7 @@ async function placeOrder(e) {
     notes: formData.get('notes'),
     items: cart,
     total: getCartTotal(),
+    currency: 'AUD',
     user_id: currentUser ? currentUser.id : null
   };
 
