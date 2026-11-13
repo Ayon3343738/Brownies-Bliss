@@ -50,6 +50,7 @@ async function init() {
   updateCartUI();
   updateAuthUI();
   bindEvents();
+  await handlePaymentReturn();
 }
 
 // ===== Auth UI =====
@@ -345,40 +346,65 @@ async function placeOrder(e) {
     address: formData.get('address'),
     city: formData.get('city'),
     notes: formData.get('notes'),
-    items: cart,
-    total: getCartTotal(),
-    currency: 'AUD',
+    items: cart.map(item => ({ product_id: item.product_id, quantity: item.quantity })),
     user_id: currentUser ? currentUser.id : null
   };
 
   const submitBtn = checkoutForm.querySelector('button[type="submit"]');
   submitBtn.disabled = true;
-  submitBtn.textContent = 'Placing order...';
+  submitBtn.textContent = 'Redirecting to secure payment...';
 
   try {
-    const res = await fetch('/api/orders', {
+    const res = await fetch('/api/payments/create-checkout-session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-
     const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Unable to start payment');
+    if (!data.url) throw new Error('Stripe did not return a checkout URL');
+    window.location.assign(data.url);
+  } catch (err) {
+    alert('Payment could not be started: ' + err.message);
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Pay securely with Stripe';
+  }
+}
 
-    if (!res.ok) throw new Error(data.error || 'Order failed');
+async function handlePaymentReturn() {
+  const params = new URLSearchParams(window.location.search);
+  const paymentState = params.get('payment');
+  const orderId = params.get('order_id');
+
+  if (paymentState === 'cancelled') {
+    alert('Payment was cancelled. Your cart is still available; you can try again.');
+    window.history.replaceState({}, document.title, '/');
+    return;
+  }
+
+  if (paymentState !== 'success') return;
+
+  const sessionId = params.get('session_id');
+  if (!sessionId) return;
+
+  try {
+    const response = await fetch(`/api/payments/session/${encodeURIComponent(sessionId)}`);
+    const result = await response.json();
+    if (!response.ok || !result.paid) {
+      alert('Stripe is still confirming your payment. Please contact us if you were charged.');
+      return;
+    }
 
     cart = [];
     saveCart();
     updateCartUI();
-    closeCheckout();
-    checkoutForm.reset();
-
-    orderIdDisplay.textContent = data.orderId.slice(0, 8).toUpperCase();
+    orderIdDisplay.textContent = (result.orderId || orderId || '').slice(0, 8).toUpperCase();
+    document.getElementById('successMessage').textContent = 'Payment successful! Your order has been received.';
     successModal.classList.add('open');
+    window.history.replaceState({}, document.title, '/');
   } catch (err) {
-    alert('Something went wrong: ' + err.message);
-  } finally {
-    submitBtn.disabled = false;
-    submitBtn.textContent = 'Place Order';
+    console.error('Payment return verification failed:', err);
+    alert('We could not verify the payment yet. Please contact us with your order reference.');
   }
 }
 

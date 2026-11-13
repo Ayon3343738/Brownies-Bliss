@@ -203,6 +203,15 @@ const db = {
     return load().orders.find(o => o.id === id);
   },
 
+  updateOrderPayment(id, updates) {
+    const data = load();
+    const order = data.orders.find(o => o.id === id);
+    if (!order) return null;
+    Object.assign(order, updates);
+    save(data);
+    return order;
+  },
+
   updateOrderStatus(id, status) {
     const data = load();
     const order = data.orders.find(o => o.id === id);

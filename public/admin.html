@@ -236,6 +236,7 @@
             ${o.items.map(i => `${i.product_name} × ${i.quantity}`).join('<br>')}
           </div>
           <div class="order-total">Total: ${formatCurrency(o.total)}</div>
+          <div class="order-meta">Payment: <strong>${(o.payment_status || 'not recorded').replace(/_/g, ' ')}</strong> · ${(o.payment_provider || '—')}</div>
           <select class="status-select" data-id="${o.id}">
             <option value="pending" ${o.status==='pending'?'selected':''}>Pending</option>
             <option value="confirmed" ${o.status==='confirmed'?'selected':''}>Confirmed</option>
