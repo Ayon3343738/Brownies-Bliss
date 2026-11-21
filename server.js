@@ -1,8 +1,8 @@
-require("dotenv").config();
+const path = require("path");
+require("dotenv").config({ path: path.join(__dirname, ".env") });
 const Stripe = require("stripe");
 const express = require("express");
 const cors = require("cors");
-const path = require("path");
 const fs = require("fs");
 const multer = require("multer");
 const bcrypt = require("bcryptjs");
@@ -10,7 +10,10 @@ const { v4: uuidv4 } = require("uuid");
 const db = require("./db");
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT) || 3000;
+// Optional: run the admin on its own port (e.g. 3001). Leave empty to keep /admin on the main port.
+const ADMIN_PORT = process.env.ADMIN_PORT ? Number(process.env.ADMIN_PORT) : null;
+const SPLIT = ADMIN_PORT && ADMIN_PORT !== PORT;
 const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY)
   : null;
@@ -20,7 +23,7 @@ const APP_URL = (process.env.APP_URL || `http://localhost:${PORT}`).replace(
 );
 
 // Simple admin password (change this!)
-const ADMIN_PASSWORD = "brownies2026";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "brownies2026";
 
 // Ensure images folder exists
 const imagesDir = path.join(__dirname, "public", "images");
@@ -58,6 +61,36 @@ const upload = multer({
 
 // Middleware
 app.use(cors());
+
+// ---- Separate ports: store port shows only the store, admin port shows only the admin ----
+if (SPLIT) {
+  app.use((req, res, next) => {
+    const isAdminPort = req.socket.localPort === ADMIN_PORT;
+    const p = req.path;
+    if (isAdminPort) {
+      const allowed =
+        p === "/" ||
+        p === "/admin" ||
+        p.startsWith("/api/admin") ||
+        p === "/api/products" ||
+        p.startsWith("/images/") ||
+        p.startsWith("/css/");
+      if (!allowed) return res.status(404).send("Not found");
+      if (p === "/" || p === "/admin") {
+        const html = fs
+          .readFileSync(path.join(__dirname, "public", "admin.html"), "utf8")
+          .replace(/href="\/"/g, `href="http://localhost:${PORT}/"`);
+        return res.type("html").send(html);
+      }
+      return next();
+    }
+    // store port: hide the admin completely
+    if (p === "/admin" || p.startsWith("/api/admin")) {
+      return res.status(404).send("Not found");
+    }
+    next();
+  });
+}
 
 // Stripe requires the unmodified request body to verify webhook signatures.
 app.post(
@@ -222,12 +255,10 @@ app.get("/api/products/:id", (req, res) => {
 app.post("/api/payments/create-checkout-session", async (req, res) => {
   try {
     if (!stripe) {
-      return res
-        .status(503)
-        .json({
-          error:
-            "Stripe is not configured. Add STRIPE_SECRET_KEY to your .env file.",
-        });
+      return res.status(503).json({
+        error:
+          "Stripe is not configured. Add STRIPE_SECRET_KEY to your .env file.",
+      });
     }
 
     const {
@@ -471,9 +502,40 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
-app.listen(PORT, () => {
+function logStart() {
   console.log(`\n🍫 Brownies Bliss is running!`);
   console.log(`   Store  → http://localhost:${PORT}`);
+  console.log(
+    SPLIT
+      ? `   Admin  → http://localhost:${ADMIN_PORT}`
+      : `   Admin  → http://localhost:${PORT}/admin`,
+  );
+  console.log(
+    stripe
+      ? `   Stripe → key loaded (${process.env.STRIPE_SECRET_KEY.slice(0, 8)}...)`
+      : `   Stripe → NOT configured (no STRIPE_SECRET_KEY found in ${path.join(__dirname, ".env")})`,
+  );
+}
 
-  console.log(`   Password: ${ADMIN_PASSWORD}\n`);
+// One server process, one database, two ports
+function listenOn(port, label, cb) {
+  const srv = app.listen(port, cb);
+  srv.on("error", (err) => {
+    if (err.code === "EADDRINUSE") {
+      console.error(
+        `\n❌ Port ${port} (${label}) is already in use.\n` +
+          `   Another copy of the app is still running (an old terminal, or the old brownies-bliss-admin folder).\n` +
+          `   Close it, or change ${label === "admin" ? "ADMIN_PORT" : "PORT"} in your .env, then run npm start again.\n`,
+      );
+    } else {
+      console.error(`Server error on port ${port}:`, err.message);
+    }
+    process.exit(1);
+  });
+  return srv;
+}
+
+listenOn(PORT, "store", () => {
+  if (!SPLIT) return logStart();
+  listenOn(ADMIN_PORT, "admin", logStart);
 });

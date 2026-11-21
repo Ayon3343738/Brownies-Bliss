@@ -71,6 +71,15 @@
       "image": "/images/espresso.jpg",
       "category": "Special",
       "stock": 50
+    },
+    {
+      "id": 9,
+      "name": "efwg",
+      "description": "grwrg",
+      "price": 55,
+      "image": "/images/1795262926595-whatsapp-image-2026-11-17-at-22-05-00--1.jpeg",
+      "category": "Loaded",
+      "stock": 50
     }
   ],
   "orders": [
